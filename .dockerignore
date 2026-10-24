@@ -1,0 +1,15 @@
+.git
+.github
+.env
+**/__pycache__
+*.pyc
+catboost_info/
+notebooks/
+logs/
+tests/
+app/models/model_backup.joblib
+grafana/
+.pytest_cache
+experiments/
+.venv/
+**/.DS_Store

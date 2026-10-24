@@ -1,0 +1,111 @@
+
+services:
+  api:
+    build: .
+    container_name: fastapi-app
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - USAGE_DB_PATH=/app/logs/usage.db
+      - USERS_DB_PATH=/app/logs/users.db
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+      - prometheus
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: car-price-frontend
+    ports:
+      - "127.0.0.1:8501:8501"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - API_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - backend
+
+  backup:
+    build: .
+    container_name: db-backup
+    command: python -m app.services.backup --loop
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - USAGE_DB_PATH=/app/logs/usage.db
+      - USERS_DB_PATH=/app/logs/users.db
+      - BACKUP_DIR=/app/logs/backups
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - backend
+
+  # optional: public HTTPS for the website. Start with:  docker compose --profile https up -d
+  # needs DOMAIN in .env and the domain's DNS pointing at this server (Caddy gets the certificate automatically)
+  https:
+    image: caddy:2
+    container_name: https-proxy
+    profiles: ["https"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - frontend
+    restart: unless-stopped
+    networks:
+      - backend
+
+  redis:
+    image: redis:8.10.2-alpine
+    container_name: redis1
+    networks:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    container_name: prometheus1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    container_name: grafana1
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  caddy_data:
